@@ -16,7 +16,7 @@ class Program
         var product = await client.GetProductsAsync();
         foreach (var item in product)
         {
-            Console.WriteLine($"Název: {item.name}, Skladem: {item.stock}");
+            Console.WriteLine($" Id: {item.id} Název: {item.name}, Skladem: {item.stock}");
         }
         Console.WriteLine($"Načteno {product.Count} produktů.");
         Console.ReadLine(); 
