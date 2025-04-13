@@ -165,4 +165,31 @@ public class WooApiClient
         return allProducts;
 
     }
+
+    public async Task<bool> UpdateProductStockAsync(int id, int stock)
+    {
+        IConfiguration config = new ConfigurationBuilder()
+          .AddUserSecrets<Program>()
+          .Build();
+        var apiUrl = config["WooCommerce:ApiUrl"] + $"/products/{id}";
+        Console.Write($"{id} + {stock}");
+        var productData = new
+        {
+            stock_quantity = stock
+        };
+        var jsonContent = new StringContent(JsonSerializer.Serialize(productData), Encoding.UTF8, "application/json");
+        try
+        {
+            var response = await client.PutAsync(apiUrl, jsonContent);
+            Console.WriteLine($"STATUS: {response.StatusCode}");
+            var responseContent = await response.Content.ReadAsStringAsync();
+            Console.WriteLine(responseContent);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Chyba při aktualizaci produktu {id}: {ex.Message}");
+            return false;
+        }
+    }
 }
