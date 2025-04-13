@@ -1,9 +1,6 @@
 ﻿// See https://aka.ms/new-console-template for more information
+using EtsyWooSync.Services;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Configuration.UserSecrets;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
 
 class Program
 {
@@ -13,56 +10,16 @@ class Program
         var builder = new ConfigurationBuilder()
             .AddUserSecrets<Program>();
 
-        IConfiguration config = builder.Build();
+        var config = builder.Build();
+        var client = new WooApiClient(config);
 
-        string consumerKey = config["WooCommerce:ConsumerKey"];
-        string consumerSecret = config["WooCommerce:ConsumerSecret"];
-        string url = config["WooCommerce:ApiUrl"] + "/products";
-       
-        using var client = new HttpClient();
-
-        var byteArray = Encoding.ASCII.GetBytes($"{consumerKey}:{consumerSecret}");
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(byteArray));
-        try
+        var product = await client.GetProductsAsync();
+        foreach (var item in product)
         {
-
-
-            var response = await client.GetAsync(url);
-            var result = await response.Content.ReadAsStringAsync();
-
-            if (response.IsSuccessStatusCode)
-            {
-                using JsonDocument doc = JsonDocument.Parse(result);
-                foreach (var product in doc.RootElement.EnumerateArray())
-                {
-                    string name;
-
-                    if (product.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String)
-                    {
-                        name = nameElement.GetString()!;
-                    }
-                    else
-                    {
-                        name = "(bez názvu)";
-                    }
-                    int? stock = product.TryGetProperty("stock_quantity", out var stockElement) && stockElement.ValueKind != JsonValueKind.Null
-                        ? stockElement.GetInt32()
-                        : (int?)null;
-
-                    Console.WriteLine($"{name} — skladem: {stock}");
-                }
-            }
-            else
-            {
-                Console.WriteLine($"Chyba: {response.StatusCode}");
-                Console.WriteLine(result);
-            }
+            Console.WriteLine($"Název: {item.name}, Skladem: {item.stock}");
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Chyba při nastavení hlavičky: {ex.Message}");
-            return;
-        }
+        Console.WriteLine($"Načteno {product.Count} produktů.");
+        Console.ReadLine(); 
     }
 }
 
