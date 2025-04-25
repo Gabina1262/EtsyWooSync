@@ -1,5 +1,6 @@
 ﻿namespace EtsyWooSync.Services;
-
+using global::EtsyWooSync.Inerface;
+using global::EtsyWooSync.Models;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
@@ -122,14 +123,14 @@ public class WooApiClient
         }
     }
 
-    public async Task<List<(string name, int? stock)>> GetAllProductsAsync()
+    public async Task<List<IProduct>> GetAllProductsAsync()
     {
         IConfiguration config = new ConfigurationBuilder()
           .AddUserSecrets<Program>()
           .Build();
 
 
-        var allProducts = new List<(string name, int? stock)>();
+        var allProducts = new List<IProduct>();
         var page = 1;
         while (true)
         {
@@ -152,7 +153,12 @@ public class WooApiClient
                 break;
 
             foreach (var product in root.EnumerateArray())
-            {
+            { 
+                int wooId = product.TryGetProperty("id", out var idElement) &&
+                    idElement.ValueKind == JsonValueKind.Number
+                    ? idElement.GetInt32()
+                    : -1;
+
                 string name = product.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
                     ? nameElement.GetString()!
                     : "(bez názvu)";
@@ -161,7 +167,65 @@ public class WooApiClient
                     ? stockElement.GetInt32()
                     : (int?)null;
 
-                allProducts.Add((name, stock));
+                List<string> categories = new();
+
+                if (product.TryGetProperty("categories", out var catArray) && catArray.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var cat in catArray.EnumerateArray())
+                    {
+                        if (cat.TryGetProperty("name", out var catName) && catName.ValueKind == JsonValueKind.String)
+                        {
+                            categories.Add(catName.GetString()!);
+                        }
+                    }
+                }
+
+                List<string> tags = new();
+
+                if (product.TryGetProperty("tags", out var tagArray) && tagArray.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var tag in tagArray.EnumerateArray())
+                    {
+                        if (tag.TryGetProperty("name", out var tagName) && tagName.ValueKind == JsonValueKind.String)
+                        {
+                            tags.Add(tagName.GetString()!);
+                        }
+                    }
+                }
+
+                Dictionary<string, List<string>> attributes = new();
+                if (product.TryGetProperty("attributes", out var attrArray) && attrArray.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var attr in attrArray.EnumerateArray())
+                    {
+                        if (attr.TryGetProperty("name", out var attrName) && attrName.ValueKind == JsonValueKind.String)
+                        {
+                            string nameAttr = attrName.GetString()!;
+                            List<string> values = new();
+                            if (attr.TryGetProperty("options", out var optionsArray) && optionsArray.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var option in optionsArray.EnumerateArray())
+                                {
+                                    if (option.ValueKind == JsonValueKind.String)
+                                    {
+                                        values.Add(option.GetString()!);
+                                    }
+                                }
+                            }
+                            attributes[nameAttr] = values;
+                        }
+                    }
+                }
+
+                allProducts.Add( new Product
+                    { WooId = wooId, 
+                    Name = name, 
+                    Stock = stock ?? 0,
+                    Categories = categories, 
+                    Tags = tags, 
+                    Attributes = attributes
+                        }
+                );
             }
 
             page++;
@@ -260,7 +324,7 @@ public class WooApiClient
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        var today = DateTime.UtcNow.Date.AddDays(-2);
+        var today = DateTime.UtcNow.Date.AddDays(-1);
         var todaysOrders = new List<JsonElement>();
 
         foreach (var order in root.EnumerateArray())

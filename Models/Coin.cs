@@ -1,12 +1,30 @@
-﻿abstract class Coin
+﻿using EtsyWooSync.Inerface;
+
+public abstract partial class Coin : IProduct, IHasCategories, IHasTags, IHasAttributes
 {
-    string Name { get; set; }
-    int WholeBunch { get; set; }    
-    Dictionary<int, int> Variations { get; set; } = new Dictionary<int, int>();
+
+    public int WooId { get; set; } = 0; // ID produktu na WooCommerce
+    public string Name { get; set; } = string.Empty; // název mince
+
+    public int Stock => WholeBunch;
+    public virtual int WholeBunch { get; set; } = 0; // počet kusů v setu   
+
+    public  Dictionary<int, int> Variations { get; set; } = new();
+    public virtual List<string> Categories { get; set; } = new()
+    {
+        "Mince", "Novinky", "Rekvizity"
+    };
+
+    public virtual List<string> Tags { get; set; } = new()
+    {
+        "mince"
+    };
+
+    public abstract Dictionary<string, List<string>> Attributes { get; set; }
 
     bool MoreThanHundred { get; set; } = true;
 
-    public void ProcessOrder(int variationId, int quantity)
+    public void ProcessCoinOrder(int variationId, int quantity)
     {
         if (!Variations.ContainsKey(variationId))
         {
@@ -31,5 +49,14 @@
         {
             Console.WriteLine($"UPOZORNĚNÍ: {Name} dochází, zbývá jen {WholeBunch} ks!");
         }
+    }
+
+    public async Task RestockCoin(int id, int wholeBunch)
+    {
+        await Task.Run(() =>
+            {
+                WholeBunch = wholeBunch;
+                Console.WriteLine($"Doplněno {Name}: {WholeBunch} ks");
+            });
     }
 }
