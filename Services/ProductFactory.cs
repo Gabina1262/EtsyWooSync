@@ -3,6 +3,7 @@ using EtsyWooSync.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -13,7 +14,7 @@ namespace EtsyWooSync.Services
 {
     class ProductFactory
     {
-        public static IProduct Create(JsonElement product)
+        public static async Task<IProduct> Create(JsonElement product, WooApiClient wooClient)
         {
             int wooId = product.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.Number
                 ? idElement.GetInt32()
@@ -35,7 +36,7 @@ namespace EtsyWooSync.Services
 
             if (isCoin)
             {
-                var variations = ParseVariations(product);
+                var variations = await wooClient.LoadVariantQuantitiesAsync(wooId);
                 return new GenericCoin
                 {
                     WooId = wooId,
@@ -123,21 +124,7 @@ namespace EtsyWooSync.Services
             return attributes;
         }
 
-        private static Dictionary<int, int> ParseVariations(JsonElement product)
-        {
-            var variations = new Dictionary<int, int>();
-            if (product.TryGetProperty("variations", out var array) && array.ValueKind == JsonValueKind.Array)
-            {
-                // Dummy přiřazení pro testování – reálné hodnoty se budou načítat později
-                var ids = array.EnumerateArray().Select(v => v.GetInt32()).ToList();
-                foreach (var id in ids)
-                {
-                    // Zatím dáváme vše jako "1 kus", později načteme správně z variant
-                    variations[id] = 1;
-                }
-            }
-            return variations;
-        }
+      
 
         private static bool IsCoin(JsonElement product, Dictionary<string, List<string>> attributes)
         {
