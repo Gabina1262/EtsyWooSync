@@ -345,4 +345,58 @@ public class WooApiClient
         }
         return todaysOrders;
     }
+    public async Task<Dictionary<int, int>> LoadVariantQuantitiesAsync(int productId)
+    {
+        IConfiguration config = new ConfigurationBuilder()
+            .AddUserSecrets<Program>()
+            .Build();
+
+        var variationsUrl = config["WooCommerce:ApiUrl"] + $"/products/{productId}/variations?per_page=100";
+
+        var variations = new Dictionary<int, int>();
+
+        var response = await client.GetAsync(variationsUrl);
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.WriteLine($"Chyba při načítání variant pro produkt {productId}: {response.StatusCode}");
+            return variations;
+        }
+
+        var result = await response.Content.ReadAsStringAsync();
+        using JsonDocument doc = JsonDocument.Parse(result);
+
+        foreach (var variation in doc.RootElement.EnumerateArray())
+        {
+            int variationId = variation.GetProperty("id").GetInt32();
+            if (variation.TryGetProperty("attributes", out var attributesArray) && attributesArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var attr in attributesArray.EnumerateArray())
+                {
+                    if (attr.TryGetProperty("name", out var nameElement) && nameElement.GetString()?.ToLower().Contains("balen") == true)
+                    {
+                        if (attr.TryGetProperty("option", out var optionElement) && optionElement.ValueKind == JsonValueKind.String)
+                        {
+                            string option = optionElement.GetString()!;
+                            int quantity = ParseQuantityFromOption(option);
+
+                            if (quantity > 0)
+                            {
+                                variations[variationId] = quantity;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return variations;
+    }
+
+    private int ParseQuantityFromOption(string option)
+    {
+        // například převést "10 ks" → 10
+        var digits = new string(option.Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var quantity) ? quantity : 1;
+    }
+
 }
