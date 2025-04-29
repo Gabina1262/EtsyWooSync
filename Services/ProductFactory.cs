@@ -12,9 +12,9 @@ using static Coin;
 
 namespace EtsyWooSync.Services
 {
-    class ProductFactory
+ public class ProductFactory
     {
-        public static async Task<IProduct> Create(JsonElement product, WooApiClient wooClient)
+        public static async Task<IProduct> CreateAsync(JsonElement product, WooApiClient wooClient)
         {
             int wooId = product.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.Number
                 ? idElement.GetInt32()
@@ -36,7 +36,7 @@ namespace EtsyWooSync.Services
 
             if (isCoin)
             {
-                var variations = await wooClient.LoadVariantQuantitiesAsync(wooId);
+                var variations = await wooClient.LoadVariantIdsAsync(wooId);
                 return new GenericCoin
                 {
                     WooId = wooId,
@@ -125,7 +125,6 @@ namespace EtsyWooSync.Services
         }
 
       
-
         private static bool IsCoin(JsonElement product, Dictionary<string, List<string>> attributes)
         {
             if (product.TryGetProperty("type", out var typeElement) &&

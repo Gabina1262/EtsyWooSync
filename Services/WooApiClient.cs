@@ -11,14 +11,16 @@ using System.Text.Json;
 public class WooApiClient
 {
     private readonly HttpClient client;
-    private readonly string apiUrl;
+    private readonly string baseApiUrl;
+
 
     public WooApiClient(IConfiguration config)
     {
 
         string consumerKey = config["WooCommerce:ConsumerKey"];
         string consumerSecret = config["WooCommerce:ConsumerSecret"];
-        apiUrl = config["WooCommerce:ApiUrl"] + "/products";
+        baseApiUrl = config["WooCommerce:ApiUrl"] ?? throw new ArgumentNullException("ApiUrl in config");
+
 
 
 
@@ -27,16 +29,49 @@ public class WooApiClient
             AllowAutoRedirect = false,
             MaxResponseHeadersLength = 128 // zvýší limit ze 64 KB na 128 KB
         };
-        client = new HttpClient(handler);
+      
+        client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri(baseApiUrl)
+        };
+       
         var byteArray = Encoding.ASCII.GetBytes($"{consumerKey}:{consumerSecret}");
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(byteArray));
     }
+    public async Task<string> GetAsync(string relativeUrl)
+    {
+
+        var fullUrl = $"{baseApiUrl.TrimEnd('/')}/{relativeUrl.TrimStart('/')}";
+        Console.WriteLine($"Requesting: {fullUrl}");
+
+        try
+        {
+            var response = await client.GetAsync(fullUrl);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($" Response Status: {response.StatusCode}");
+                var error = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Response Content: {error}");
+                return null;
+            }
+
+            return await response.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Chyba při HTTP volání: {ex.Message}");
+            return null;
+        }
+    }
+
+    
     public async Task<List<(int id, string name, int? stock)>> GetProductsAsync()
     {
 
         try
         {
-            var response = await client.GetAsync(apiUrl);
+            var response = await client.GetAsync(baseApiUrl + "/products");
             var result = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -86,22 +121,13 @@ public class WooApiClient
     }
     public async Task<(string name, int? stock)?> GetProductByIdAsync(int id)
     {
-        IConfiguration config = new ConfigurationBuilder()
-            .AddUserSecrets<Program>()
-            .Build();
 
-        var apiUrl = config["WooCommerce:ApiUrl"] + $"/products/{id}";
+
+        var result = await GetAsync($"/products/{id}");
 
         try
         {
-            var response = await client.GetAsync(apiUrl);
-            var result = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"Chyba při volání produktu {id}: {response.StatusCode}");
-                return null;
-            }
+            var response = await client.GetAsync(baseApiUrl);
 
             using JsonDocument doc = JsonDocument.Parse(result);
             var root = doc.RootElement;
@@ -125,26 +151,13 @@ public class WooApiClient
 
     public async Task<List<IProduct>> GetAllProductsAsync()
     {
-        IConfiguration config = new ConfigurationBuilder()
-          .AddUserSecrets<Program>()
-          .Build();
-
 
         var allProducts = new List<IProduct>();
         var page = 1;
         while (true)
         {
 
-            var apiUrl = config["WooCommerce:ApiUrl"] + $"/products?per_page=100&page={page}";
-            var response = await client.GetAsync(apiUrl);
-            var result = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"URL: {apiUrl}");
-
-            if (!response.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"Chyba API: {response.StatusCode} \n{result}");
-                break;
-            }
+            var result = await GetAsync(baseApiUrl) + $"/products?per_page=100&page={page}";
 
             using JsonDocument doc = JsonDocument.Parse(result);
             var root = doc.RootElement;
@@ -153,7 +166,7 @@ public class WooApiClient
                 break;
 
             foreach (var product in root.EnumerateArray())
-            { 
+            {
                 int wooId = product.TryGetProperty("id", out var idElement) &&
                     idElement.ValueKind == JsonValueKind.Number
                     ? idElement.GetInt32()
@@ -217,14 +230,15 @@ public class WooApiClient
                     }
                 }
 
-                allProducts.Add( new Product
-                    { WooId = wooId, 
-                    Name = name, 
+                allProducts.Add(new Product
+                {
+                    WooId = wooId,
+                    Name = name,
                     Stock = stock ?? 0,
-                    Categories = categories, 
-                    Tags = tags, 
+                    Categories = categories,
+                    Tags = tags,
                     Attributes = attributes
-                        }
+                }
                 );
             }
 
@@ -235,39 +249,19 @@ public class WooApiClient
 
     }
 
-    public async Task<bool> UpdateProductStockAsync(int id, int stock)
+    public async Task<bool> UpdateProductStockAsync(int id, int? stock)
     {
-        IConfiguration config = new ConfigurationBuilder()
-          .AddUserSecrets<Program>()
-          .Build();
 
-        var apiUrl = config["WooCommerce:ApiUrl"] + $"/products/{id}";
+        var updateUrl = $"{baseApiUrl}/products/{id}";
 
         Console.WriteLine($"{id} → aktualizace skladu na {stock} ks");
 
-
-        var responseGet = await client.GetAsync(apiUrl);
-
-        if (!responseGet.IsSuccessStatusCode)
-        {
-            Console.WriteLine($"Chyba při volání produktu {id}: {responseGet.StatusCode}");
-            return false;
-        }
-
-        var responseContent = await responseGet.Content.ReadAsStringAsync();
-
-        using JsonDocument doc = JsonDocument.Parse(responseContent);
-        bool manageStock = false;
-
         var productData = new Dictionary<string, object>
         {
-              { "stock_quantity", stock }
-        };
+              { "stock_quantity", stock },
+              { "manage_stock", true }
 
-        if (!manageStock)
-        {
-            productData["manage_stock"] = true;
-        }
+        };
 
         var jsonContent = new StringContent(
             JsonSerializer.Serialize(productData),
@@ -277,7 +271,7 @@ public class WooApiClient
 
         try
         {
-            var response = await client.PutAsync(apiUrl, jsonContent);
+            var response = await client.PutAsync(updateUrl, jsonContent);
             Console.WriteLine($"STATUS: {response.StatusCode}");
             return response.IsSuccessStatusCode;
 
@@ -291,8 +285,8 @@ public class WooApiClient
 
     public async Task<List<JsonElement>> GetOrdersAsync()
     {
-        var ordersUrl = apiUrl.Replace("/products", "/orders?per_page=10&orderby=date&order=desc");
-        var response = await client.GetAsync(ordersUrl);
+        var response = await client.GetAsync($"{baseApiUrl}/orders?per_page=10&orderby=date&order=desc");
+
         var result = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode)
         {
@@ -310,8 +304,8 @@ public class WooApiClient
     }
     public async Task<List<JsonElement>> GetTodaysOrdersAsync()
     {
-        var ordersUrl = apiUrl.Replace("/products", "/orders?per_page=50&orderby=date&order=desc");
-        var response = await client.GetAsync(ordersUrl);
+
+        var response = await client.GetAsync($"{baseApiUrl}/orders?per_page=50&orderby=date&order=desc");
 
         if (!response.IsSuccessStatusCode)
         {
@@ -345,58 +339,163 @@ public class WooApiClient
         }
         return todaysOrders;
     }
-    public async Task<Dictionary<int, int>> LoadVariantQuantitiesAsync(int productId)
+
+    public async Task<List<int>> LoadVariantIdsAsync(int productId)
     {
-        IConfiguration config = new ConfigurationBuilder()
-            .AddUserSecrets<Program>()
-            .Build();
 
-        var variationsUrl = config["WooCommerce:ApiUrl"] + $"/products/{productId}/variations?per_page=100";
+        var variationsId = new List<int>();
 
-        var variations = new Dictionary<int, int>();
+        var relativeUrl = $"products/{productId}/variations?per_page=100";
 
-        var response = await client.GetAsync(variationsUrl);
-        if (!response.IsSuccessStatusCode)
+        var result = await GetAsync(relativeUrl);
+
+        if (string.IsNullOrEmpty(result))
         {
-            Console.WriteLine($"Chyba při načítání variant pro produkt {productId}: {response.StatusCode}");
-            return variations;
+            Console.WriteLine($"Varianta nebyla načtena (null/empty response) pro produkt {productId}");
+            return variationsId;
         }
 
-        var result = await response.Content.ReadAsStringAsync();
-        using JsonDocument doc = JsonDocument.Parse(result);
+        Console.WriteLine($" Response Status: {result}");
 
-        foreach (var variation in doc.RootElement.EnumerateArray())
+
+        try
         {
-            int variationId = variation.GetProperty("id").GetInt32();
-            if (variation.TryGetProperty("attributes", out var attributesArray) && attributesArray.ValueKind == JsonValueKind.Array)
+            using JsonDocument doc = JsonDocument.Parse(result);
+            foreach (var variation in doc.RootElement.EnumerateArray())
             {
-                foreach (var attr in attributesArray.EnumerateArray())
+                if (variation.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.Number)
                 {
-                    if (attr.TryGetProperty("name", out var nameElement) && nameElement.GetString()?.ToLower().Contains("balen") == true)
-                    {
-                        if (attr.TryGetProperty("option", out var optionElement) && optionElement.ValueKind == JsonValueKind.String)
-                        {
-                            string option = optionElement.GetString()!;
-                            int quantity = ParseQuantityFromOption(option);
-
-                            if (quantity > 0)
-                            {
-                                variations[variationId] = quantity;
-                            }
-                        }
-                    }
+                    int variationId = idElement.GetInt32();
+                    variationsId.Add(variationId);
                 }
             }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Chyba při parsování variant: {ex.Message}");
+        }
 
-        return variations;
+        return variationsId;
     }
 
-    private int ParseQuantityFromOption(string option)
+
+
+    public async Task<List<Product>> LoadVariantDetailsAsync(List<int> variantIds)
     {
-        // například převést "10 ks" → 10
-        var digits = new string(option.Where(char.IsDigit).ToArray());
-        return int.TryParse(digits, out var quantity) ? quantity : 1;
-    }
+        var details = new List<Product>();
 
+        foreach (var variantId in variantIds)
+        {
+            var relativeUrl = $"products/{variantId}";
+            var result = await GetAsync(relativeUrl);
+
+            Console.WriteLine($"🔄 Loading URL: {baseApiUrl}/{relativeUrl}");
+
+            if (string.IsNullOrEmpty(result))
+            {
+                Console.WriteLine($"⚠️ Chyba při načítání varianty {variantId} – odpověď je prázdná nebo null.");
+                continue;
+            }
+
+            Console.WriteLine("📦 Response Content: " + result);
+
+            try
+            {
+                using var doc = JsonDocument.Parse(result);
+                var root = doc.RootElement;
+
+                string name = root.GetProperty("name").GetString() ?? "(bez názvu)";
+                int? stock = root.TryGetProperty("stock_quantity", out var stockElement) && stockElement.ValueKind != JsonValueKind.Null
+                    ? stockElement.GetInt32()
+                    : (int?)null;
+
+                // Atributy
+                var attributes = new Dictionary<string, List<string>>();
+
+                if (root.TryGetProperty("attributes", out var attributesElement) && attributesElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var attr in attributesElement.EnumerateArray())
+                    {
+                        string attrName = attr.GetProperty("name").GetString() ?? "";
+                        if (attr.TryGetProperty("option", out var optionElement))
+                        {
+                            string option = optionElement.GetString() ?? "";
+                            if (!attributes.ContainsKey(attrName))
+                                attributes[attrName] = new List<string>();
+                            attributes[attrName].Add(option);
+                        }
+                    }
+                }
+
+                details.Add(new Product
+                {
+                    WooId = variantId,
+                    Name = name,
+                    Stock = stock ?? 0,
+                    Attributes = attributes
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Chyba při parsování varianty {variantId}: {ex.Message}");
+            }
+        }
+
+        return details;
+    }
 }
+//    public async Task<Dictionary<int, int>> LoadVariantQuantitiesAsync(int productId)
+//    {
+//        IConfiguration config = new ConfigurationBuilder()
+//            .AddUserSecrets<Program>()
+//            .Build();
+
+//        var variationsUrl = config["WooCommerce:ApiUrl"] + $"/products/{productId}/variations?per_page=100";
+
+//        var variations = new Dictionary<int, int>();
+
+//        var response = await client.GetAsync(variationsUrl);
+//        if (!response.IsSuccessStatusCode)
+//        {
+//            Console.WriteLine($"Chyba při načítání variant pro produkt {productId}: {response.StatusCode}");
+//            return variations;
+//        }
+
+//        var result = await response.Content.ReadAsStringAsync();
+//        using JsonDocument doc = JsonDocument.Parse(result);
+
+//        foreach (var variation in doc.RootElement.EnumerateArray())
+//        {
+//            int variationId = variation.GetProperty("id").GetInt32();
+//            if (variation.TryGetProperty("attributes", out var attributesArray) && attributesArray.ValueKind == JsonValueKind.Array)
+//            {
+//                foreach (var attr in attributesArray.EnumerateArray())
+//                {
+//                    if (attr.TryGetProperty("name", out var nameElement) && nameElement.GetString()?.ToLower().Contains("balen") == true)
+//                    {
+//                        if (attr.TryGetProperty("option", out var optionElement) && optionElement.ValueKind == JsonValueKind.String)
+//                        {
+//                            string option = optionElement.GetString()!;
+//                            int quantity = ParseQuantityFromOption(option);
+
+//                            if (quantity > 0)
+//                            {
+//                                variations[variationId] = quantity;
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        }
+
+//        return variations;
+//    }
+
+//    private int ParseQuantityFromOption(string option)
+//    {
+//        // například převést "10 ks" → 10
+//        var digits = new string(option.Where(char.IsDigit).ToArray());
+//        return int.TryParse(digits, out var quantity) ? quantity : 1;
+//    }
+
+//}

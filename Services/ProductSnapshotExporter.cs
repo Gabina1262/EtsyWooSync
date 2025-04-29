@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace EtsyWooSync.Services
 {
-    class ProductSnapshotExporter
+  public  class ProductSnapshotExporter
     {
         private const string FilePath = "storage/products_snapshot.json";
 
