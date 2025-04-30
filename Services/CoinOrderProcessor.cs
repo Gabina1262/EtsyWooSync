@@ -1,4 +1,5 @@
-﻿using EtsyWooSync.Models;
+﻿using EtsyWooSync.Inerface;
+using EtsyWooSync.Models;
 using System.Text.Json;
 
 namespace EtsyWooSync.Services
@@ -6,12 +7,14 @@ namespace EtsyWooSync.Services
 
     public class CoinOrderProcessor
     {
-        private readonly WooApiClient wooClient;
-
-        public CoinOrderProcessor(WooApiClient wooClient)
+        private readonly IWooApiClient wooClient;
+               
+        public CoinOrderProcessor(IWooApiClient wooClient)
         {
             this.wooClient = wooClient;
         }
+
+      
 
         public async Task HandleCoinOrderItem(JsonElement lineItem, Dictionary<string, int> wholeBunchStock)
         {

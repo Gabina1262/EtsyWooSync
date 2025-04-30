@@ -8,7 +8,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
-public class WooApiClient
+public class WooApiClient :IWooApiClient
 {
     private readonly HttpClient client;
     private readonly string baseApiUrl;
@@ -460,4 +460,39 @@ public class WooApiClient
         }
     }
 
+    public async Task<bool> DecreaseVariantStockAsync(int productId, int variantId, int quantityToDeduct)
+    {
+        var relativeUrl = $"/products/{productId}/variations/{variantId}";
+        var json = await GetAsync(relativeUrl);
+
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            Console.WriteLine($"Nepodařilo se načíst variantu {variantId} pro odečet.");
+            return false;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            int currentStock = 0;
+
+            if (root.TryGetProperty("stock_quantity", out var stockProp) && stockProp.ValueKind == JsonValueKind.Number)
+            {
+                currentStock = stockProp.GetInt32();
+            }
+
+            int newStock = Math.Max(0, currentStock - quantityToDeduct); // nikdy nesmí jít do minusu
+
+            Console.WriteLine($"Odečítám {quantityToDeduct} ks → ze {currentStock} → zůstává {newStock}");
+
+            return await UpdateVariantStockAsync(productId, variantId, newStock);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Chyba při zpracování odečtu varianty {variantId}: {ex.Message}");
+            return false;
+        }
+    }
 }
