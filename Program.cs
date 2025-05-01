@@ -19,56 +19,27 @@ class Program
             .Build();
 
         var wooClient = new WooApiClient(config);
+        var wooClientInterface = (IWooApiClient)wooClient;
 
-        var todaysOrders = await wooClient.GetTodaysOrdersAsync();
+        // 🔁 Stáhni snapshot z Woo a ulož do souboru
+        await ProductSnapshotExporter.CreateFromWooAsync(wooClient);
 
-        foreach (var order in todaysOrders)
+        // 📂 Načti snapshot
+        var snapshot = await ProductSnapshotExporter.GetSnapshotsAsync();
+
+        if (snapshot.Count == 0)
         {
-            Console.WriteLine("============== OBJEDNÁVKA ==============");
-
-            if (order.TryGetProperty("id", out var orderId))
-            {
-                Console.WriteLine($"Objednávka ID: {orderId}");
-            }
-
-            if (order.TryGetProperty("line_items", out var items))
-            {
-                foreach (var item in items.EnumerateArray())
-                {
-                    string name = item.GetProperty("name").GetString();
-                    int productId = item.GetProperty("product_id").GetInt32();
-                    int quantity = item.GetProperty("quantity").GetInt32();
-
-                    // variant_id může být 0 pokud jde o produkt bez varianty
-                    int variationId = item.TryGetProperty("variation_id", out var varId) ? varId.GetInt32() : 0;
-
-                    Console.WriteLine($"→ {name}");
-                    Console.WriteLine($"   Product ID: {productId}");
-                    Console.WriteLine($"   Variation ID: {variationId}");
-                    Console.WriteLine($"   Quantity: {quantity}");
-
-                    // Volitelně: výpis meta dat (např. barva, balení atd.)
-                    if (item.TryGetProperty("meta_data", out var meta))
-                    {
-                        foreach (var metaItem in meta.EnumerateArray())
-                        {
-                            string key = metaItem.GetProperty("key").GetString();
-                            string value = metaItem.GetProperty("value").ToString(); // může být číslo nebo JSON
-
-                            Console.WriteLine($"   · {key}: {value}");
-                        }
-                    }
-
-
-
-                    //int productId = 4674;
-
-                    //await TestLoadingVariants(wooClient, productId);
-
-                    Console.ReadLine();
-                }
-            }
+            Console.WriteLine("❌ Snapshot je prázdný. Ukončuji.");
+            return;
         }
+
+        Console.WriteLine($"\n🔧 Přepočítávám sklad pro {snapshot.Count} produktů...\n");
+
+        var stockReset = new StockResetService(wooClientInterface);
+
+        await stockReset.RunInitialStockResetFromSnapshotAsync(snapshot);
+
+        Console.WriteLine("\n🎉 HOTOVO! Všechny mince byly aktualizovány.");
     }
 
 

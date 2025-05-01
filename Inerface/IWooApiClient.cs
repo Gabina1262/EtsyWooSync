@@ -10,7 +10,7 @@ namespace EtsyWooSync.Inerface
         Task<List<JsonElement>> GetOrdersAsync();
         Task<List<JsonElement>> GetTodaysOrdersAsync();
 
-        Task<List<ProductVariant>> GetVariantsForProductAsync(int productId);
+        Task<List<ProductCoinVariant>> GetVariantsForProductAsync(int productId);
 
         Task<bool> UpdateProductStockAsync(int productId, int? stock);
         Task<bool> UpdateVariantStockAsync(int productId, int variantId, int newStockQuantity);

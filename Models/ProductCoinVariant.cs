@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace EtsyWooSync.Models
 {
-    public class ProductVariant
+    public class ProductCoinVariant
     {
         public int ProductId { get; set; }              // ID hlavního produktu
         public int VariantId { get; set; }              // ID varianty

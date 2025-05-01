@@ -1,7 +1,6 @@
 ﻿namespace EtsyWooSync.Inerface
 {
 
-
     public interface IHasCategories
     {
         List<string> Categories { get; }

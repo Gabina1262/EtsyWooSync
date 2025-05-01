@@ -2,7 +2,7 @@
 
 public static class VariantDebugHelper
 {
-    public static void PrintVariantIds(IEnumerable<ProductVariant> variants)
+    public static void PrintVariantIds(IEnumerable<ProductCoinVariant> variants)
     {
         foreach (var variant in variants)
         {

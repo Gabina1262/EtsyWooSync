@@ -13,70 +13,78 @@ namespace EtsyWooSync.Services;
 public class StockResetService
 {
     private readonly IWooApiClient wooClient;
-     public StockResetService(IWooApiClient wooClient)
-    { 
-       this.wooClient = wooClient;
+    public StockResetService(IWooApiClient wooClient)
+    {
+        this.wooClient = wooClient;
     }
 
     public async Task RunInitialStockResetFromSnapshotAsync(List<ProductSnapshot> snapshot)
     {
         foreach (var product in snapshot)
         {
-            // 1. Filtruj jen mince podle názvu
             if (!product.Name.Contains("mince", StringComparison.OrdinalIgnoreCase) &&
                 !product.Name.Contains("coin", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            Console.WriteLine($"Přepočítávám produkt: {product.Name} (ID: {product.Id})");
+            Console.WriteLine($"\n🔄 Přepočítávám produkt: {product.Name} (ID: {product.Id})");
+            Console.WriteLine($"🧮 WholeBunch zásoba: {product.TotalStock}");
 
-            // 2. Načti varianty produktu z Woo
-            var allVariants = await wooClient.GetVariantsForProductAsync(product.Id);
-            if (allVariants.Count == 0)
+            var variants = await wooClient.GetVariantsForProductAsync(product.Id);
+
+            if (variants.Count == 0)
             {
-                Console.WriteLine("Žádné varianty – přeskakuji.");
+                Console.WriteLine("⚠️ Žádné varianty – přeskakuji.");
                 continue;
             }
 
-            // 3. Vytvoř slovník wholeBunch zásob podle barvy
-           
             var stockByColor = new Dictionary<string, int>();
 
-            // Pokud má produkt barvy → přepočítáme každou zvlášť
             if (product.Attributes != null &&
                 product.Attributes.TryGetValue("Color", out var colors) &&
-                colors != null &&
                 colors.Count > 0)
             {
                 foreach (var color in colors)
                 {
-                    if (!string.IsNullOrWhiteSpace(color))
-                    {
-                        var key = color.Trim();
-                        stockByColor[key] = product.TotalStock;
-                    }
+                    var key = color.Trim();
+                    Console.WriteLine($"🎨 Detekovaná barva: {key}");
+                    stockByColor[key] = product.TotalStock;
                 }
             }
             else
             {
-                // Produkt nemá barvy → použij výchozí klíč
+                Console.WriteLine($"🎨 Žádná barva – použita výchozí '__default__'");
                 stockByColor["__default__"] = product.TotalStock;
             }
 
-            // 4. Přepočítej nové zásoby variant
-            var processor = new CoinOrderProcessor(wooClient);
-            var updates = StockDistributor.DistributeStockWithOptionalColor(stockByColor, allVariants);
-
-            // 5. Odešli update každé varianty do Woo
-            foreach (var update in updates)
+            Console.WriteLine("📦 Načtené varianty:");
+            foreach (var v in variants)
             {
-                await wooClient.UpdateVariantStockAsync(product.Id, update.VariantId, update.NewStockQuantity);
+                Console.WriteLine($"   ID {v.VariantId} | barva: {v.Color} | balení: {v.QuantityPerPackage}");
             }
 
-            Console.WriteLine($"Hotovo: {product.Name}");
+            var updates = StockDistributor.DistributeStockWithOptionalColor(stockByColor, variants);
+
+            if (updates.Count == 0)
+            {
+                Console.WriteLine("⚠️ Žádné varianty k aktualizaci – přeskakuji.");
+                continue;
+            }
+
+            foreach (var update in updates)
+            {
+                Console.WriteLine($"⬆️  Aktualizuji variantu {update.VariantId} → nový sklad: {update.NewStockQuantity}");
+                var success = await wooClient.UpdateVariantStockAsync(product.Id, update.VariantId, update.NewStockQuantity);
+                if (!success)
+                {
+                    Console.WriteLine($"❌ Nezdařilo se aktualizovat variantu {update.VariantId}");
+                }
+            }
+
+            Console.WriteLine("✅ Přepočet dokončen.");
         }
 
-        Console.WriteLine("Všechny mince přepočítány.");
+        Console.WriteLine("\n🎉 HOTOVO – Debug přepočet dokončen.");
     }
 }

@@ -375,60 +375,58 @@ public class WooApiClient :IWooApiClient
     }
 
 
-    public async Task<List<ProductVariant>> GetVariantsForProductAsync(int productId)
+    public async Task<List<ProductCoinVariant>> GetVariantsForProductAsync(int productId)
     {
-        var result = new List<ProductVariant>();
+        var response = await GetAsync($"/products/{productId}/variations?per_page=100");
 
-        var json = await GetAsync($"/products/{productId}/variations?per_page=100");
-        if (string.IsNullOrWhiteSpace(json))
+        if (string.IsNullOrEmpty(response))
         {
-            Console.WriteLine($"Nepodařilo se načíst varianty pro produkt {productId}");
-            return result;
+            Console.WriteLine($"❌ Nepodařilo se načíst varianty pro produkt {productId}");
+            return new List<ProductCoinVariant>();
         }
 
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-
-        foreach (var variant in root.EnumerateArray())
+        var variants = new List<ProductCoinVariant>();
+        using var doc = JsonDocument.Parse(response);
+        foreach (var variant in doc.RootElement.EnumerateArray())
         {
             int variantId = variant.GetProperty("id").GetInt32();
-
             string? color = null;
-            int quantityPerPackage = 1; // výchozí hodnota
+            int quantityPerPackage = 1; // default
 
-            if (variant.TryGetProperty("attributes", out var attributes))
+            if (variant.TryGetProperty("attributes", out var attrs) && attrs.ValueKind == JsonValueKind.Array)
             {
-                foreach (var attr in attributes.EnumerateArray())
+                foreach (var attr in attrs.EnumerateArray())
                 {
-                    var name = attr.GetProperty("name").GetString();
-                    var option = attr.GetProperty("option").GetString();
+                    if (attr.TryGetProperty("slug", out var slugElement) && attr.TryGetProperty("option", out var optionElement))
+                    {
+                        var slug = slugElement.GetString()?.ToLower();
+                        var option = optionElement.GetString();
 
-                    if (string.Equals(name, "pa_color", StringComparison.OrdinalIgnoreCase))
-                    {
-                        color = option;
-                    }
-                    else if (string.Equals(name, "pa_mnozstvi-v-baleni", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // převést např. "10-ks" na 10
-                        if (option != null && int.TryParse(option.Split('-')[0], out var qty))
+                        if (slug != null && option != null)
                         {
-                            quantityPerPackage = qty;
+                            if (slug.Contains("color"))
+                                color = option;
+
+                            if (slug.Contains("baleni") && int.TryParse(option.Split(' ')[0], out var parsedQty))
+                                quantityPerPackage = parsedQty;
                         }
                     }
                 }
             }
 
-            result.Add(new ProductVariant
+            variants.Add(new ProductCoinVariant
             {
-                ProductId = productId,
                 VariantId = variantId,
+                ProductId = productId,
                 Color = color,
                 QuantityPerPackage = quantityPerPackage
             });
         }
 
-        return result;
+        return variants;
     }
+
+
     public async Task<bool> UpdateVariantStockAsync(int productId, int variantId, int newStockQuantity)
     {
         var updateUrl = $"{baseApiUrl}/products/{productId}/variations/{variantId}";
