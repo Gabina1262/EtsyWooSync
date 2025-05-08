@@ -6,7 +6,7 @@
         public override List<string> Tags { get; set; } = new();
         public override List<string> Categories { get; set; } = new();
         public override Dictionary<string, List<string>> Attributes { get; set; } = new();
-        public List<int> Variations { get; set; } = new ();
+        public List<int> Variations { get; set; } = new  ();
     }
 }
       

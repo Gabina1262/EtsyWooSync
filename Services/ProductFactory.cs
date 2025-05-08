@@ -12,7 +12,7 @@ using static Coin;
 
 namespace EtsyWooSync.Services
 {
- public class ProductFactory
+    public class ProductFactory
     {
         public static async Task<IProduct> CreateAsync(JsonElement product, WooApiClient wooClient)
         {
@@ -48,19 +48,19 @@ namespace EtsyWooSync.Services
                     Variations = variations
                 };
             }
-                if (IsProductSet(product))
+            if (IsProductSet(product))
+            {
+                return new GenericSet
                 {
-                    return new GenericSet
-                    {
-                        WooId = wooId,
-                        Name = name,
-                        Stock = stock,
-                        Categories = categories,
-                        Tags = tags,
-                        Attributes = attributes
-                    };
-                }
-            
+                    WooId = wooId,
+                    Name = name,
+                    Stock = stock,
+                    Categories = categories,
+                    Tags = tags,
+                    Attributes = attributes
+                };
+            }
+
 
             return new Product
             {
@@ -124,7 +124,7 @@ namespace EtsyWooSync.Services
             return attributes;
         }
 
-      
+
         private static bool IsCoin(JsonElement product, Dictionary<string, List<string>> attributes)
         {
             if (product.TryGetProperty("type", out var typeElement) &&
@@ -135,7 +135,7 @@ namespace EtsyWooSync.Services
             }
             return false;
         }
-        
+
         private static bool IsProductSet(JsonElement product)
         {
             if (product.TryGetProperty("categories", out var array) && array.ValueKind == JsonValueKind.Array)
@@ -145,7 +145,7 @@ namespace EtsyWooSync.Services
                     if (cat.TryGetProperty("name", out var nameElement))
                     {
                         var name = nameElement.GetString()?.ToLower();
-                        if (name != null && name.Contains("set") || name.Contains("sada") || name.Contains("balíček"))
+                        if (name != null && (name.Contains("set") || name.Contains("sada") || name.Contains("balíček")))
                         {
                             return true;
                         }
@@ -154,7 +154,14 @@ namespace EtsyWooSync.Services
             }
             return false;
         }
-    
-    }
 
+
+        public static bool IsVariant(JsonElement product)
+        {
+            return product.TryGetProperty("type", out var typeElement) &&
+                   typeElement.ValueKind == JsonValueKind.String &&
+                   typeElement.GetString() == "variation";
+        }
+
+    }
 }

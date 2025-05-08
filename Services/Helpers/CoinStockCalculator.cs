@@ -1,10 +1,10 @@
 ﻿using EtsyWooSync.Models;
 
-namespace EtsyWooSync.Services;
+namespace EtsyWooSync.Services.Helpers;
 
-public static class StockDistributor
+public static class CoinStockCalculator
 {
-    public static List<StockUpdate> DistributeStockWithOptionalColor(
+    public static List<StockUpdate> CalculateCoinVariantStock(
         Dictionary<string, int> stockByGroup,
         List<ProductCoinVariant> allVariants)
     {
@@ -18,23 +18,23 @@ public static class StockDistributor
         {
             if (!stockByGroup.TryGetValue(group, out int wholeBunch))
             {
-                Console.WriteLine($"⚠️  Chybí WholeBunch zásoba pro skupinu: {group}");
+                Console.WriteLine($"Chybí WholeBunch zásoba pro skupinu: {group}");
                 continue;
             }
 
             var groupVariants = allVariants
                 .Where(v =>
-                    (string.IsNullOrWhiteSpace(v.Color) && group == "__default__") ||
+                    string.IsNullOrWhiteSpace(v.Color) && group == "__default__" ||
                     (v.Color?.Trim().Equals(group, StringComparison.OrdinalIgnoreCase) ?? false))
                 .ToList();
 
-            Console.WriteLine($"🔄 Barva {group} – výchozí zásoba: {wholeBunch}");
+            Console.WriteLine($"Barva {group} – výchozí zásoba: {wholeBunch}");
 
             foreach (var variant in groupVariants.OrderByDescending(v => v.QuantityPerPackage))
             {
                 if (variant.QuantityPerPackage <= 0)
                 {
-                    Console.WriteLine($"⚠️  Varianta ID {variant.VariantId} má neplatné balení: {variant.QuantityPerPackage}");
+                    Console.WriteLine($"Varianta ID {variant.VariantId} má neplatné balení: {variant.QuantityPerPackage}");
                     continue;
                 }
 
@@ -46,7 +46,7 @@ public static class StockDistributor
                     NewStockQuantity = count
                 });
 
-                Console.WriteLine($"📦  {variant.QuantityPerPackage} ks balení → {count} balení (ID {variant.VariantId})");
+                Console.WriteLine($"{variant.QuantityPerPackage} ks balení → {count} balení (ID {variant.VariantId})");
             }
         }
 

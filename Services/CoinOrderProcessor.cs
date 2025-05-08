@@ -1,5 +1,6 @@
 ﻿using EtsyWooSync.Inerface;
 using EtsyWooSync.Models;
+using EtsyWooSync.Services.Helpers;
 using System.Text.Json;
 
 namespace EtsyWooSync.Services
@@ -43,14 +44,14 @@ namespace EtsyWooSync.Services
                 }
             }
 
-            var allVariants = await wooClient.GetVariantsForProductAsync(productId);
+            var allVariants = await wooClient.GetVariantsForCoinsAsync(productId);
 
             // Pojistný přepočet skladu
             string stockKey = string.IsNullOrWhiteSpace(color) ? "__default__" : color;
             if (wholeBunchStock.TryGetValue(stockKey, out int wholeBunch))
             {
                 
-                var updates = StockDistributor.DistributeStockWithOptionalColor(wholeBunchStock, allVariants);
+                var updates = CoinStockCalculator.CalculateCoinVariantStock(wholeBunchStock, allVariants);
 
                 foreach (var update in updates)
                 {

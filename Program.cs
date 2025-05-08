@@ -4,7 +4,10 @@ using EtsyWooSync.Models;
 using EtsyWooSync.Services;
 using EtsyWooSync.Services.EtsyWooSync.Services;
 using EtsyWooSync.Services.Helpers;
+using EtsyWooSync.Services.StockReset;
 using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
@@ -15,52 +18,53 @@ class Program
     static async Task Main(string[] args)
     {
         var config = new ConfigurationBuilder()
-            .AddUserSecrets<Program>()
-            .Build();
+     .AddUserSecrets<Program>()
+     .Build();
 
         var wooClient = new WooApiClient(config);
-        var wooClientInterface = (IWooApiClient)wooClient;
+        var coinSnapshot = await ProductSnapshotExporter.GetSnapshotsAsync();
+        var allProducts = await wooClient.GetAllProductsAsync();
 
-        // 🔁 Stáhni snapshot z Woo a ulož do souboru
-        await ProductSnapshotExporter.CreateFromWooAsync(wooClient);
+        // var coinReset = new CoinStockReset(wooClient);
+        var setReset = new SetStockReset();
+        // var resetter = new GeneralStockReset(coinReset, setReset);
 
-        // 📂 Načti snapshot
-        var snapshot = await ProductSnapshotExporter.GetSnapshotsAsync();
-
-        if (snapshot.Count == 0)
+        // Výpis před přepočtem
+        Console.WriteLine("=== SETY PŘED PŘEPOČTEM ===");
+        var setsBefore = allProducts.OfType<ProductSet>()
+            .Select(s => new { s.WooId, s.Name, Stock = s.Stock })
+            .ToList();
+        foreach (var s in setsBefore)
         {
-            Console.WriteLine("❌ Snapshot je prázdný. Ukončuji.");
-            return;
+            Console.WriteLine($"- {s.Name} (ID {s.WooId}) → Sklad: {s.Stock}");
         }
 
-        Console.WriteLine($"\n🔧 Přepočítávám sklad pro {snapshot.Count} produktů...\n");
+        // Přepočet
+        setReset.ResetSetStockAsync(allProducts);
 
-        var stockReset = new StockResetService(wooClientInterface);
-
-        await stockReset.RunInitialStockResetFromSnapshotAsync(snapshot);
-
-        Console.WriteLine("\n🎉 HOTOVO! Všechny mince byly aktualizovány.");
-    }
-
-
-    public static async Task TestLoadingVariants(WooApiClient wooClient, int productId)
-    {
-        // 1. Načteme ID variant
-        List<int> variantIds = await wooClient.LoadVariantIdsAsync(productId);
-
-        if (variantIds.Count == 0)
+        // Výpis po přepočtu
+        Console.WriteLine("=== SETY PO PŘEPOČTU ===");
+        var setsAfter = allProducts.OfType<ProductSet>().ToList();
+        foreach (var set in setsAfter)
         {
-            Console.WriteLine("Žádné varianty nebyly nalezeny.");
-            return;
+            Console.WriteLine($"- {set.Name} (ID {set.WooId}) → Nový sklad: {set.Stock}");
         }
 
-        Console.WriteLine($"Nalezeno {variantIds.Count} variant:");
-        foreach (var id in variantIds)
+        // Výpis změn
+        Console.WriteLine("=== SETY, KTERÉ SE ZMĚNILY ===");
+        foreach (var s in setsBefore)
         {
-            Console.WriteLine($"- {id}");
+            var updated = setsAfter.FirstOrDefault(p => p.WooId == s.WooId);
+            if (updated != null && updated.Stock != s.Stock)
+            {
+                Console.WriteLine($"✓ {s.Name} (ID {s.WooId}) → {s.Stock} → {updated.Stock}");
+            }
         }
     }
 }
+
+
+   
 
 
 
